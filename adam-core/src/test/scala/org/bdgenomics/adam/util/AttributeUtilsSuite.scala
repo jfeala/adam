@@ -19,6 +19,7 @@ package org.bdgenomics.adam.util
 
 import org.scalatest._
 import htsjdk.samtools.SAMRecord.SAMTagAndValue
+import htsjdk.samtools.TextTagCodec
 import org.bdgenomics.adam.models.{ Attribute, TagType }
 
 class AttributeUtilsSuite extends FunSuite {
@@ -73,12 +74,35 @@ class AttributeSuite extends FunSuite {
   import AttributeUtils._
 
   test("test SAMTagAndValue parsing") {
-    assert(convertSAMTagAndValue(new SAMTagAndValue("XY", 3)) === Attribute("XY", TagType.Integer, 3))
-    assert(convertSAMTagAndValue(new SAMTagAndValue("XY", "foo")) === Attribute("XY", TagType.String, "foo"))
-    assert(convertSAMTagAndValue(new SAMTagAndValue("XY", 3.0f)) === Attribute("XY", TagType.Float, 3.0f))
-    assert(convertSAMTagAndValue(new SAMTagAndValue("XY", 'a')) === Attribute("XY", TagType.Character, 'a'))
+    // Build SAMTagAndValue using the same string parser as htsjdk
+    def createSAMTagAndValue(tagString: String): SAMTagAndValue = {
+      val tagMap = new TextTagCodec().decode(tagString)
+      new SAMTagAndValue(tagMap.getKey(), tagMap.getValue())
+    }
+    // Simple tag types
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:i:3")) === Attribute("XY", TagType.Integer, 3))
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:Z:foo")) === Attribute("XY", TagType.String, "foo"))
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:f:3.0")) === Attribute("XY", TagType.Float, 3.0f))
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:A:a")) === Attribute("XY", TagType.Character, 'a'))
 
+    // Array tag types
+    val intArray = Array(1, 2, 3)
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:B:i,1,2,3")) ===
+      Attribute("XY", TagType.NumericIntSequence, intArray))
+
+    val shortArray: Array[java.lang.Short] = Seq(java.lang.Short.valueOf("0"), java.lang.Short.valueOf("1")).toArray
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:B:s,0,1")) ===
+      Attribute("XY", TagType.NumericShortSequence, shortArray))
+
+    val floatArray = Array(1.0f, 2.0f, 3.0f)
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:B:f,1.0,2.0,3.0")) ===
+      Attribute("XY", TagType.NumericFloatSequence, floatArray))
+
+    // Two forms of Byte arrays, type B:c and type H, indistinguishable by SAMTagAndValue
     val byteArray: Array[java.lang.Byte] = Seq(java.lang.Byte.valueOf("0"), java.lang.Byte.valueOf("1")).toArray
-    assert(convertSAMTagAndValue(new SAMTagAndValue("XY", byteArray)) === Attribute("XY", TagType.ByteSequence, byteArray))
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:B:c,0,1")) ===
+      Attribute("XY", TagType.NumericByteSequence, byteArray))
+    assert(convertSAMTagAndValue(createSAMTagAndValue("XY:H:0001")) ===
+      Attribute("XY", TagType.NumericByteSequence, byteArray))
   }
 }
