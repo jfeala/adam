@@ -24,6 +24,7 @@ import org.bdgenomics.adam.models._
 import org.bdgenomics.adam.rdd.ADAMContext._
 import org.bdgenomics.adam.util.ADAMFunSuite
 import org.bdgenomics.formats.avro._
+import scala.io.Source
 import scala.util.Random
 
 class AlignmentRecordRDDFunctionsSuite extends ADAMFunSuite {
@@ -163,7 +164,7 @@ class AlignmentRecordRDDFunctionsSuite extends ADAMFunSuite {
     val reads12A = rdd12A.collect()
     val reads12B = rdd12B.collect()
 
-    (0 until reads12A.length) foreach {
+    reads12A.indices.foreach {
       case i: Int =>
         val (readA, readB) = (reads12A(i), reads12B(i))
         assert(readA.getSequence === readB.getSequence)
@@ -205,12 +206,32 @@ class AlignmentRecordRDDFunctionsSuite extends ADAMFunSuite {
     val readsA = rddA.collect()
     val readsB = rddB.collect()
 
-    (0 until readsA.length) foreach {
+    readsA.indices.foreach {
       case i: Int =>
         val (readA, readB) = (readsA(i), readsB(i))
         assert(readA.getSequence === readB.getSequence)
         assert(readA.getQual === readB.getQual)
         assert(readA.getReadName === readB.getReadName)
     }
+  }
+
+  sparkTest("writing a small sorted file as SAM should produce the expected result") {
+
+    val unsortedPath = ClassLoader.getSystemClassLoader.getResource("unsorted.sam").getFile
+    val reads = sc.loadBam(unsortedPath)
+
+    val actualSortedPath = Files.createTempDirectory("sam").toAbsolutePath.toString + "/sorted.sam"
+    reads.adamSortReadsByReferencePosition().adamSAMSave(actualSortedPath, isSorted = true, asSingleFile = true)
+
+    val actualSortedFile = Source.fromFile(actualSortedPath)
+    val actualSortedLines = actualSortedFile.getLines.toList
+
+    val expectedSortedFile = Source.fromFile(ClassLoader.getSystemClassLoader.getResource("sorted.sam").getFile)
+    val expectedSortedLines = expectedSortedFile.getLines.toList
+
+    assert(expectedSortedLines.size === actualSortedLines.size)
+    expectedSortedLines.zip(actualSortedLines).foreach(p => {
+      assert(p._1 === p._2)
+    })
   }
 }

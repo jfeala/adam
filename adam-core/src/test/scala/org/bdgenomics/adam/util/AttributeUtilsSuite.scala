@@ -44,7 +44,7 @@ class AttributeUtilsSuite extends FunSuite {
     val tags = parseAttributes("jM:B:c,-1\tjI:B:i,-1,1")
 
     assert(tags(0).tag === "jM")
-    assert(tags(0).tagType === TagType.NumericSequence)
+    assert(tags(0).tagType === TagType.NumericIntSequence)
     assert(tags(0).value.asInstanceOf[Array[Number]].sameElements(Array(-1)))
     assert(tags(1).value.asInstanceOf[Array[Number]].sameElements(Array(-1, 1)))
 

@@ -65,7 +65,8 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
     rdd.filter(overlapsQuery)
   }
 
-  def maybeSaveBam(args: ADAMSaveAnyArgs): Boolean = {
+  def maybeSaveBam(args: ADAMSaveAnyArgs,
+                   isSorted: Boolean = false): Boolean = {
     if (args.outputPath.endsWith(".sam")) {
       log.info("Saving data in SAM format")
       rdd.adamSAMSave(args.outputPath, asSingleFile = args.asSingleFile)
@@ -91,8 +92,9 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
     maybeSaveBam(args) || { rdd.adamParquetSave(args); true }
   }
 
-  def adamSave(args: ADAMSaveAnyArgs) = {
-    maybeSaveBam(args) || maybeSaveFastq(args) || { rdd.adamParquetSave(args); true }
+  def adamSave(args: ADAMSaveAnyArgs,
+               isSorted: Boolean = false) = {
+    maybeSaveBam(args, isSorted) || maybeSaveFastq(args) || { rdd.adamParquetSave(args); true }
   }
 
   def adamSAMString: String = {
@@ -120,11 +122,15 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
    *
    * @param filePath Path to save files to.
    * @param asSam Selects whether to save as SAM or BAM. The default value is true (save in SAM format).
+   * @param isSorted If the output is sorted, this will modify the header.
    */
-  def adamSAMSave(filePath: String, asSam: Boolean = true, asSingleFile: Boolean = false) = SAMSave.time {
+  def adamSAMSave(filePath: String,
+                  asSam: Boolean = true,
+                  asSingleFile: Boolean = false,
+                  isSorted: Boolean = false) = SAMSave.time {
 
     // convert the records
-    val (convertRecords: RDD[SAMRecordWritable], header: SAMFileHeader) = rdd.adamConvertToSAM()
+    val (convertRecords: RDD[SAMRecordWritable], header: SAMFileHeader) = rdd.adamConvertToSAM(isSorted)
 
     // add keys to our records
     val withKey =
@@ -227,7 +233,7 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
    *
    * @return Returns a SAM/BAM formatted RDD of reads, as well as the file header.
    */
-  def adamConvertToSAM(): (RDD[SAMRecordWritable], SAMFileHeader) = ConvertToSAM.time {
+  def adamConvertToSAM(isSorted: Boolean = false): (RDD[SAMRecordWritable], SAMFileHeader) = ConvertToSAM.time {
     // collect global summary data
     val sd = rdd.adamGetSequenceDictionary()
     val rgd = rdd.adamGetReadGroupDictionary()
@@ -237,6 +243,10 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
 
     // create header
     val header = adamRecordConverter.createSAMHeader(sd, rgd)
+
+    if (isSorted) {
+      header.setSortOrder(SAMFileHeader.SortOrder.coordinate)
+    }
 
     // broadcast for efficiency
     val hdrBcast = rdd.context.broadcast(SAMFileHeaderWritable(header))
@@ -274,15 +284,16 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
     log.info("Sorting reads by reference position")
 
     // NOTE: In order to keep unmapped reads from swamping a single partition
-    // we sort the unmapped reads by read name. we prefix with "ZZZ" to ensure
-    // that the read name is lexicographically "after" the contig names
+    // we sort the unmapped reads by read name. We prefix with tildes ("~";
+    // ASCII 126) to ensure that the read name is lexicographically "after" the
+    // contig names.
     rdd.keyBy(r => {
       if (r.getReadMapped) {
         ReferencePosition(r)
       } else {
-        ReferencePosition("ZZZ%s".format(r.getReadName), 0)
+        ReferencePosition(s"~~~${r.getReadName}", 0)
       }
-    }).sortByKey().map(p => p._2)
+    }).sortByKey().map(_._2)
   }
 
   def adamMarkDuplicates(): RDD[AlignmentRecord] = MarkDuplicatesInDriver.time {
@@ -299,8 +310,9 @@ class AlignmentRecordRDDFunctions(rdd: RDD[AlignmentRecord])
    * @return Returns an RDD of recalibrated reads.
    */
   def adamBQSR(knownSnps: Broadcast[SnpTable],
-               observationDumpFile: Option[String] = None): RDD[AlignmentRecord] = BQSRInDriver.time {
-    BaseQualityRecalibration(rdd, knownSnps, observationDumpFile)
+               observationDumpFile: Option[String] = None,
+               validationStringency: ValidationStringency = ValidationStringency.LENIENT): RDD[AlignmentRecord] = BQSRInDriver.time {
+    BaseQualityRecalibration(rdd, knownSnps, observationDumpFile, validationStringency)
   }
 
   /**
