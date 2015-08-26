@@ -30,16 +30,17 @@ package org.bdgenomics.adam.models
  */
 case class Attribute(tag: String, tagType: TagType.Value, value: Any) {
   override def toString: String = {
-    val numSequenceTypes = Array(
-      TagType.NumericByteSequence,
-      TagType.NumericIntSequence,
-      TagType.NumericShortSequence,
-      TagType.NumericUnsignedByteSequence,
-      TagType.NumericUnsignedIntSequence,
-      TagType.NumericUnsignedShortSequence,
-      TagType.NumericFloatSequence)
-    if (numSequenceTypes contains tagType) {
-      "%s:%s%s".format(tag, tagType, value.mkString(","))
+    val byteSequenceTypes = Array(TagType.NumericByteSequence, TagType.NumericUnsignedByteSequence)
+    val intSequenceTypes = Array(TagType.NumericIntSequence, TagType.NumericUnsignedIntSequence)
+    val shortSequenceTypes = Array(TagType.NumericShortSequence, TagType.NumericUnsignedShortSequence)
+    if (byteSequenceTypes contains tagType) {
+      "%s:%s,%s".format(tag, tagType, value.asInstanceOf[Array[Byte]].mkString(","))
+    } else if (shortSequenceTypes contains tagType) {
+      "%s:%s,%s".format(tag, tagType, value.asInstanceOf[Array[Short]].mkString(","))
+    } else if (intSequenceTypes contains tagType) {
+      "%s:%s,%s".format(tag, tagType, value.asInstanceOf[Array[Int]].mkString(","))
+    } else if (tagType == TagType.NumericFloatSequence) {
+      "%s:%s,%s".format(tag, tagType, value.asInstanceOf[Array[Float]].mkString(","))
     } else {
       "%s:%s:%s".format(tag, tagType, value.toString)
     }
@@ -59,13 +60,12 @@ object TagType extends Enumeration {
   val Float = TypeValue("f")
   val String = TypeValue("Z")
   val ByteSequence = TypeValue("H")
-  val NumericByteSequence = TypeValue("B:c,")
-  val NumericIntSequence = TypeValue("B:i,")
-  val NumericShortSequence = TypeValue("B:s,")
-  val NumericUnsignedByteSequence = TypeValue("B:C,")
-  val NumericUnsignedIntSequence = TypeValue("B:I,")
-  val NumericUnsignedShortSequence = TypeValue("B:S,")
-  val NumericFloatSequence = TypeValue("B:f,")
-
+  val NumericByteSequence = TypeValue("B:c")
+  val NumericIntSequence = TypeValue("B:i")
+  val NumericShortSequence = TypeValue("B:s")
+  val NumericUnsignedByteSequence = TypeValue("B:C")
+  val NumericUnsignedIntSequence = TypeValue("B:I")
+  val NumericUnsignedShortSequence = TypeValue("B:S")
+  val NumericFloatSequence = TypeValue("B:f")
 
 }
